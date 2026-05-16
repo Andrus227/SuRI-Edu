@@ -1,4 +1,4 @@
-# SAR-Edu: Sistema de Apoio Robótico Educacional com Robix + Arduino Mega
+# SuRI-EDU: Sistema de Apoio Robótico Educacional com Robix + Arduino Mega
 
 Projeto desenvolvido na disciplina de Robótica Industrial (Prof. Dr. Ronan Marcelo Martins), com foco no controle de um braço robótico do kit Robix por meio de software próprio em Python.
 
@@ -73,6 +73,12 @@ python main.py
 ```
 
 4. Selecione a porta serial correta e inicie o controle.
+
+> Dica: pressione F1 dentro do aplicativo para abrir o Manual do Operador do SuRI-EDU.
+
+## Ajuda
+
+- Manual completo em `HELP.md`.
 
 ## Estrutura do projeto
 

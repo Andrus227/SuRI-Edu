@@ -13,7 +13,7 @@ class RobixSupervisorio(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        self.title("Supervisório Robix - IFMT")
+        self.title("SuRI-EDU - Supervisório Educacional")
         self.geometry("1100x850")
         self.configure(fg_color="#1E1E1E")
 
@@ -57,7 +57,7 @@ class RobixSupervisorio(ctk.CTk):
 
         self.configurar_atalhos_teclado()
         self.mostrar_tela(self.tela_menu_inicial)
-        self.escrever_log("⚙️ Sistema Robix atualizado. Pressione F1 para o Manual do Operador.")
+        self.escrever_log("⚙️ Sistema SuRI-EDU atualizado. Pressione F1 para o Manual do Operador.")
 
     def abrir_ajuda(self, event=None):
         if hasattr(self, "janela_ajuda") and self.janela_ajuda.winfo_exists():
@@ -65,8 +65,8 @@ class RobixSupervisorio(ctk.CTk):
             return
 
         self.janela_ajuda = ctk.CTkToplevel(self)
-        self.janela_ajuda.title("Manual do Operador - Robix IFMT")
-        self.janela_ajuda.geometry("900x600")
+        self.janela_ajuda.title("Manual do Operador - SuRI-EDU")
+        self.janela_ajuda.geometry("980x660")
         self.janela_ajuda.configure(fg_color="#1E1E1E")
         self.janela_ajuda.transient(self)
 
@@ -77,7 +77,7 @@ class RobixSupervisorio(ctk.CTk):
         frame_dir = ctk.CTkFrame(self.janela_ajuda, fg_color="transparent")
         frame_dir.pack(side="right", fill="both", expand=True, padx=20, pady=20)
 
-        ctk.CTkLabel(frame_esq, text="ÍNDICE (F1)", font=("Arial", 16, "bold"), text_color="#569CD6").pack(pady=20)
+        ctk.CTkLabel(frame_esq, text="ÍNDICE DO MANUAL (F1)", font=("Arial", 16, "bold"), text_color="#569CD6").pack(pady=20)
 
         self.caixa_texto_ajuda = ctk.CTkTextbox(
             frame_dir, font=("Arial", 14), wrap="word", fg_color="gray10", text_color="#E0E0E0"
@@ -85,11 +85,74 @@ class RobixSupervisorio(ctk.CTk):
         self.caixa_texto_ajuda.pack(fill="both", expand=True)
 
         textos_manual = {
-            "1. Visão Geral & Serial": "O Supervisório Robix é um software HMI para controle do kit em ambiente educacional.",
-            "2. Teach Pendant": "A tela TEACH PENDANT permite controle manual por sliders e gravação de poses.",
-            "3. Editor (Linguagem)": "O Editor interpreta comandos da Linguagem Robix com setup, loop e métodos.",
-            "4. Painel de Execução": "Interface simplificada para execução de rotinas carregadas de arquivo.",
-            "5. Segurança e Emergência": "A segurança física é prioridade. Use STOP (ESPAÇO) em qualquer anomalia.",
+            "1. Visão Geral": (
+                "O SuRI-EDU é um supervisório educacional para controle do braço Robix com Arduino Mega.\n"
+                "Ele integra interface desktop, comunicação serial e firmware no Arduino para executar movimentos.\n"
+                "Documentação completa em HELP.md na pasta do projeto.\n"
+                "Use o sistema com o robô fixado, área livre e atenção ao STOP de emergência.\n"
+                "Consulte também: 2. Primeiros Passos e 7. Atalhos."
+            ),
+            "2. Primeiros Passos": (
+                "1) Instale Python 3.x e crie o ambiente virtual.\n"
+                "2) Instale dependências: pip install -r requirements.txt\n"
+                "3) Grave o firmware Servo/Servo.ino no Arduino Mega.\n"
+                "4) Conecte o USB e execute: python main.py\n"
+                "5) Selecione a porta serial e teste um MoveTo(1, 90).\n"
+                "Dica: no Windows, ative o ambiente com .venv\\Scripts\\activate."
+            ),
+            "3. Conexão Serial": (
+                "Abra o menu de portas no topo direito e selecione a porta do Arduino.\n"
+                "Use \"Atualizar...\" caso a porta não apareça.\n"
+                "O modo Monitor exibe pacotes no log para depuração.\n"
+                "Se aparecer \"Nenhuma porta\", verifique cabo USB, driver e Arduino ligado."
+            ),
+            "4. Teach Pendant (Sliders)": (
+                "Controle manual das juntas por sliders.\n"
+                "Modo Tempo Real envia o comando durante o arraste; desligado envia ao soltar.\n"
+                "Use \"Enviar Pose\" para sincronizar com a pose atual.\n"
+                "Use \"Salvar Ponto\" para gravar sequência e \"Exportar\" para gerar um método."
+            ),
+            "5. Editor de Código": (
+                "O editor interpreta a Linguagem Robix com blocos setup, loop e metodo.\n"
+                "Comandos suportados: MoveTo(M, A), MovePose(B, O, C, P, R, G) e Wait(MS).\n"
+                "Exemplo:\n"
+                "setup:\n"
+                "    MoveTo(1, 90)\n"
+                "loop:\n"
+                "    MovePose(90, 90, 90, 90, 90, 90)\n"
+                "    Wait(1000)\n"
+                "Use o dicionário à direita como referência."
+            ),
+            "6. Painel de Execução": (
+                "Carregue um arquivo .txt e execute sem editar.\n"
+                "Use F5 para abrir o painel e F9 para iniciar a rotina.\n"
+                "O painel é indicado para aulas e demonstrações rápidas.\n"
+                "Para editar o código, use o Editor (F4)."
+            ),
+            "7. Atalhos e Operação": (
+                "F1: Manual | F2: Menu | F3: Teach Pendant | F4: Editor | F5: Painel.\n"
+                "F9: Executar rotina (Editor/Painel).\n"
+                "Espaço: parada de emergência (não funciona dentro de campos de texto).\n"
+                "Setas e Tab: navegação e ajuste fino dos motores no Teach Pendant."
+            ),
+            "8. FAQ": (
+                "Q: Posso usar sem Arduino? A: É possível testar a interface, mas não haverá movimento.\n"
+                "Q: Por que os motores não se mexem? A: Verifique conexão serial e se o firmware foi gravado.\n"
+                "Q: Onde ficam as rotinas? A: Salve como .txt e abra no Editor/Painel."
+            ),
+            "9. Troubleshooting": (
+                "- Erro de comunicação Serial: confirme porta correta e velocidade 115200.\n"
+                "- Nenhuma porta: verifique cabo, driver e reinicie o Arduino.\n"
+                "- Sintaxe não reconhecida: confirme MoveTo/MovePose/Wait e identação.\n"
+                "- Recursão detectada: evite chamar método dentro dele mesmo.\n"
+                "- Parada inesperada: pressione Espaço apenas em situações de risco."
+            ),
+            "10. Suporte e Bugs": (
+                "Antes de solicitar suporte, anote: versão do Python, sistema, passos e arquivo .txt.\n"
+                "Inclua trechos do log exibido na parte inferior do aplicativo.\n"
+                "Contato: equipe do projeto/disciplinas listada no README.md.\n"
+                "Sugestões de melhoria são bem-vindas para evolução do SuRI-EDU."
+            ),
         }
 
         def mudar_topico(titulo):
@@ -111,7 +174,7 @@ class RobixSupervisorio(ctk.CTk):
             )
             btn.pack(fill="x", padx=10, pady=2)
 
-        mudar_topico("1. Visão Geral & Serial")
+        mudar_topico("1. Visão Geral")
 
     def configurar_atalhos_teclado(self):
         self.bind("<space>", self.acao_espaco_emergencia)
@@ -393,7 +456,7 @@ class RobixSupervisorio(ctk.CTk):
 
     def construir_menu_inicial(self):
         self.criar_toolbar_global(self.tela_menu_inicial, "MENU PRINCIPAL")
-        ctk.CTkLabel(self.tela_menu_inicial, text="ROBIX IFMT", font=("Arial", 40, "bold")).pack(expand=True)
+        ctk.CTkLabel(self.tela_menu_inicial, text="SuRI-EDU", font=("Arial", 40, "bold")).pack(expand=True)
 
     def construir_tela_slider(self):
         self.criar_toolbar_global(self.tela_slider, "TEACH PENDANT", [("⏹", "PARAR ROBÔ (ESPAÇO)", self.parar_execucao_agora)])

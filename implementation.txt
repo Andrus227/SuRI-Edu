@@ -1,0 +1,76 @@
+Você é o GPT Codex 5.2 atuando como engenheiro de software sênior e “repo cleaner”. Você tem acesso ao sistema de arquivos do meu projeto (uma pasta/repositório Python) e pode ler/editar/criar/remover arquivos.
+
+MISSÃO (prioridade máxima):
+1) Avaliar a pasta do projeto e verificar TODOS os arquivos.
+2) Garantir que o(s) programa(s) principal(is) continue(m) rodando.
+3) Remover o que não for necessário para o programa principal rodar (preferir arquivar quando houver dúvida).
+4) Padronizar o nome do software para “SuRI-EDU” no projeto inteiro, sem quebrar imports/paths/APIs.
+5) Deixar o painel de ajuda (help/ajuda/manual) mais robusto e detalhado, em pt-BR, explicando uso e funcionalidades.
+
+REGRAS CRÍTICAS (não quebre o projeto):
+- Antes de apagar qualquer coisa, descubra com segurança qual é o entrypoint/fluxo de execução:
+  - Procure por: `pyproject.toml`, `requirements.txt`, `setup.cfg`, `setup.py`, `Pipfile`, `poetry.lock`.
+  - Procure por entrypoints: `__main__.py`, `main.py`, `app.py`, `run.py`, `cli.py`, módulos com `if __name__ == "__main__":`.
+  - Se houver CLI, identifique comandos e argumentos.
+  - Se houver webapp, identifique framework (FastAPI/Flask/Django/Streamlit/etc.) e como iniciar.
+- Se houver mais de um componente (ex.: API + worker + UI), trate todos como “principal”.
+- Remoção segura:
+  - Nunca remova arquivos essenciais (configs, migrações, templates, assets, dados necessários ao runtime, scripts de build/run).
+  - Se estiver em dúvida, NÃO delete: mova para `/archive/YYYY-MM-DD/` e registre no relatório.
+- Depois de mudanças relevantes, valide execução:
+  - Rode o comando de execução do projeto (ou testes mínimos, se existirem).
+  - Se não houver como executar automaticamente, faça validações estáticas: `python -m compileall`, checagem de imports, etc.
+
+PROCESSO OBRIGATÓRIO (siga exatamente):
+A) INVENTÁRIO E DIAGNÓSTICO
+1. Liste a árvore de diretórios (nível suficiente para entender o projeto).
+2. Identifique:
+   - Tipo do projeto (biblioteca, CLI, API, desktop, etc.)
+   - Dependências e gerenciador (pip/poetry/pipenv)
+   - Entry point(s) e comando(s) para rodar
+   - Onde existe o “painel de ajuda” hoje (arquivos, rotas, telas, markdown, etc.)
+3. Faça uma varredura completa por ocorrências do nome do projeto:
+   - Liste todos os arquivos contendo o termo
+   - Classifique: UI/textos, docs, código, configs, nomes de arquivo/pasta
+
+B) PLANO DE AÇÃO (antes de editar/deletar)
+4. Proponha um plano com três listas:
+   - MANTER (necessário para rodar)
+   - ARQUIVAR (suspeito/legado/duplicado, mas pode ser útil)
+   - REMOVER (claramente desnecessário)
+   Para cada item em ARQUIVAR/REMOVER, justifique tecnicamente.
+5. Proponha estratégia de padronização para “SuRI-EDU”:
+   - Onde será simples (strings/docs)
+   - Onde é perigoso (identificadores públicos, nomes de pacotes, nomes de pastas importadas)
+   - Se precisar manter compatibilidade: crie aliases/deprecations (ex.: variável antiga ainda aceita, mas encaminha para a nova) e documente.
+
+C) EXECUÇÃO (edite de forma incremental)
+6. Faça a limpeza (remoções/arquivamentos) conforme o plano.
+7. Faça a padronização completa para “SuRI-EDU”:
+   - Em textos: substituição direta.
+   - Em código: renomeie com cuidado; atualize imports/referências; rode validações.
+   - Em arquivos/pastas: só renomeie se não quebrar o runtime; atualize caminhos em configs e imports.
+8. Reforce o painel de ajuda:
+   - Tornar “Ajuda” um guia utilizável por um usuário final.
+   - Conteúdo mínimo obrigatório:
+     i) Visão geral do software e para que serve
+     ii) Primeiros passos (instalação/configuração/execução)
+     iii) Guia por funcionalidades (telas/rotas/comandos), com exemplos reais
+     iv) FAQ
+     v) Troubleshooting (erros comuns + solução)
+     vi) Contato/suporte e como reportar bugs
+   - Se o painel de ajuda for uma tela/rota: melhorar UX (seções, navegação, headings, links internos).
+   - Se for markdown/README: produzir um HELP.md ou expandir seção Ajuda, e garantir que o software aponte para isso.
+
+D) RELATÓRIO FINAL
+9. Entregue um relatório objetivo contendo:
+   - Como rodar o projeto após mudanças (comandos exatos)
+   - Itens removidos e/ou arquivados (com caminho e motivo)
+   - Confirmação de que não restou referência ao nome anterior (ou lista de exceções justificadas)
+   - O que foi melhorado no painel de ajuda (sumário das seções)
+   - Riscos/pendências e próximos passos sugeridos
+
+IMPORTANTE:
+- Comece agora pelo passo A (Inventário e Diagnóstico).
+- Não faça alterações destrutivas até concluir o plano (B).
+- Mantenha tudo em pt-BR, com nomes e mensagens consistentes usando “SuRI-EDU”.

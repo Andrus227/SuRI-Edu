@@ -1,5 +1,6 @@
 #include <Servo.h>
 
+// SuRI-EDU - Firmware para controle do braço Robix
 // Definição dos pinos PWM (Ajuste para as portas reais do seu Arduino)
 const int pinosMotores[6] = {8,9,10,11,12,13};
 Servo motores[6];
