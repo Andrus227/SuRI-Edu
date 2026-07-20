@@ -117,7 +117,7 @@ void atualizarMotoresSuavemente() {
         // Envia o sinal físico para o hardware
         motores[i].write((int)posicaoAtual[i]);
 
-        Serial.print("motores[i].write((int)posicaoAtual[i]))";
+        Serial.print("motores[i].write((int)posicaoAtual[i]))");
       }
     }
   }
