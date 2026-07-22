@@ -1,6 +1,7 @@
-import customtkinter as ctk
-import tkinter as tk
 import re
+import tkinter as tk
+
+import customtkinter as ctk
 
 
 class ToolTip:

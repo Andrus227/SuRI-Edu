@@ -17,7 +17,7 @@ unsigned long ultimoTempo[6] = {0, 0, 0, 0, 0, 0};
 // 15ms = Rápido e suave | 30ms = Lento para processos precisos
 const int VELOCIDADE_MS = 15; 
 
-// Variáveis para o Buffer Serial Seguro
+// Buffer de um quadro: até 31 caracteres entre '<' e '>'.
 const byte numChars = 32;
 char receivedChars[numChars];
 bool newData = false;
@@ -50,9 +50,11 @@ void loop() {
 // FUNÇÕES DE ENGENHARIA (NÃO PRECISA ALTERAR)
 // =================================================================
 
-// Lê a serial procurando o início '<' e o fim '>' do pacote
+// Lê a serial procurando o início '<' e o fim '>' do pacote.
+// Um novo '<' ressincroniza a recepção; quadros excedentes são descartados.
 void receberComandoSerial() {
   static bool recvInProgress = false;
+  static bool frameOverflow = false;
   static byte ndx = 0;
   char startMarker = '<';
   char endMarker = '>';
@@ -61,34 +63,93 @@ void receberComandoSerial() {
   while (Serial.available() > 0 && newData == false) {
     rc = Serial.read();
     
-    if (recvInProgress == true) {
-      if (rc != endMarker) {
-        receivedChars[ndx] = rc;
-        ndx++;
-        if (ndx >= numChars) { ndx = numChars - 1; }
-      } else {
-        receivedChars[ndx] = '\0'; // Termina a string
-        recvInProgress = false;
-        ndx = 0;
-        newData = true;
-      }
-    } else if (rc == startMarker) {
+    if (rc == startMarker) {
       recvInProgress = true;
+      frameOverflow = false;
+      ndx = 0;
+    } else if (recvInProgress == true) {
+      if (rc == endMarker) {
+        if (!frameOverflow && ndx > 0) {
+          receivedChars[ndx] = '\0';
+          newData = true;
+        }
+        recvInProgress = false;
+        frameOverflow = false;
+        ndx = 0;
+      } else if (!frameOverflow && ndx < numChars - 1) {
+        receivedChars[ndx++] = rc;
+      } else {
+        frameOverflow = true;
+      }
     }
   }
 }
 
-// Converte o texto "Motor,Angulo" em números reais
+bool contemSomenteDigitos(const char *texto) {
+  if (texto[0] == '\0') {
+    return false;
+  }
+  for (byte i = 0; texto[i] != '\0'; i++) {
+    if (texto[i] < '0' || texto[i] > '9') {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool idParadaValido(const char *texto) {
+  if (!contemSomenteDigitos(texto) || texto[0] == '0') {
+    return false;
+  }
+  byte tamanho = strlen(texto);
+  return tamanho < 10 || (tamanho == 10 && strcmp(texto, "2147483647") <= 0);
+}
+
+// Processa <Motor,Angulo> e o comando de parada <STOP>.
 void processarComando() {
-  char * strtokIndx;
+  if (strcmp(receivedChars, "STOP") == 0 || strncmp(receivedChars, "STOP,", 5) == 0) {
+    char *idParada = NULL;
+    if (receivedChars[4] == ',') {
+      idParada = receivedChars + 5;
+      if (!idParadaValido(idParada)) {
+        return;
+      }
+    }
+
+    // Congela os alvos e mantém os servos anexados; torque físico não é medido.
+    for (int i = 0; i < 6; i++) {
+      posicaoAlvo[i] = posicaoAtual[i];
+    }
+    if (idParada == NULL) {
+      Serial.println("<ACK,STOP>");
+    } else {
+      Serial.print("<ACK,STOP,");
+      Serial.print(idParada);
+      Serial.println(">");
+    }
+    return;
+  }
+
+  char *separador = strchr(receivedChars, ',');
+  if (separador == NULL) {
+    return;
+  }
+  *separador = '\0';
+  if (strchr(separador + 1, ',') != NULL ||
+      !contemSomenteDigitos(receivedChars) ||
+      !contemSomenteDigitos(separador + 1)) {
+    return;
+  }
+
+  char *fimMotor;
+  char *fimAngulo;
+  long motorRecebido = strtol(receivedChars, &fimMotor, 10);
+  long anguloRecebido = strtol(separador + 1, &fimAngulo, 10);
+  if (*fimMotor != '\0' || *fimAngulo != '\0') {
+    return;
+  }
   
-  strtokIndx = strtok(receivedChars, ","); // Pega o ID do Motor
-  int motorRecebido = atoi(strtokIndx);    
-  
-  strtokIndx = strtok(NULL, ",");          // Pega o Ângulo
-  int anguloRecebido = atoi(strtokIndx);   
-  
-  // Interlock de Segurança: Só aceita ângulos e motores válidos
+  // Validação da faixa do protocolo; não substitui limites mecânicos de segurança.
   if (motorRecebido >= 1 && motorRecebido <= 6 && anguloRecebido >= 0 && anguloRecebido <= 180) {
     int indice = motorRecebido - 1; // Converte ID 1-6 para Indice de Array 0-5
     posicaoAlvo[indice] = anguloRecebido; // Define o novo alvo!
@@ -117,7 +178,6 @@ void atualizarMotoresSuavemente() {
         // Envia o sinal físico para o hardware
         motores[i].write((int)posicaoAtual[i]);
 
-        Serial.print("motores[i].write((int)posicaoAtual[i]))");
       }
     }
   }

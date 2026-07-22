@@ -1,5 +1,10 @@
+import logging
+
 import customtkinter as ctk
-from app import RobixSupervisorio
+
+from suri_edu.app import RobixSupervisorio
+
+logger = logging.getLogger(__name__)
 
 
 if __name__ == "__main__":
@@ -9,5 +14,5 @@ if __name__ == "__main__":
 
         app = RobixSupervisorio()
         app.mainloop()
-    except Exception as e:
-        print(f"[ERRO FATAL] Falha ao iniciar o supervisório: {e}")
+    except Exception:
+        logger.exception("Falha ao iniciar o supervisorio")
