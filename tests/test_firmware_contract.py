@@ -10,7 +10,8 @@ def test_firmware_preserva_protocolo_e_limites():
     assert "const int pinosMotores[6] = {8,9,10,11,12,13};" in source
     assert "motorRecebido >= 1 && motorRecebido <= 6" in source
     assert "anguloRecebido >= 0 && anguloRecebido <= 180" in source
-    assert "const int VELOCIDADE_MS = 15" in source
+    assert "const float VELOCIDADE_MAX_GRAUS_MS = 1.0 / 15.0" in source
+    assert "const float ACELERACAO_GRAUS_MS2 = 0.00025" in source
 
 
 def test_firmware_inicializa_todos_os_servos_em_90_graus():
@@ -27,9 +28,18 @@ def test_firmware_processa_stop_durante_interpolacao_e_confirma():
     assert 'strcmp(receivedChars, "STOP") == 0' in source
     assert 'strncmp(receivedChars, "STOP,", 5) == 0' in source
     assert "posicaoAlvo[i] = posicaoAtual[i];" in source
+    assert "velocidadeAtual[i] = 0.0;" in source
     assert 'Serial.print("<ACK,STOP,");' in source
     assert "receberComandoSerial();" in source
     assert "delay(" not in source
+
+
+def test_firmware_aplica_suavizacao_global_sem_passos_no_codigo_robix():
+    source = FIRMWARE.read_text(encoding="utf-8")
+
+    assert "velocidadeDeFrenagem = sqrt" in source
+    assert "variacaoMaxima = ACELERACAO_GRAUS_MS2 * deltaTempo" in source
+    assert "INTERVALO_ATUALIZACAO_MS" in source
 
 
 def test_firmware_descarta_campos_vazios_e_ressincroniza_quadros():

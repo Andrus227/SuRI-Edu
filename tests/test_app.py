@@ -4,6 +4,7 @@ from unittest.mock import Mock, call
 import pytest
 
 from suri_edu import app as app_module
+from suri_edu.routine_examples import ROUTINE_EXAMPLES
 
 
 def test_conectar_arduino_atualiza_lista_sem_conectar(supervisor):
@@ -313,7 +314,15 @@ def test_executar_moveto_envia_atualiza_e_aguarda(supervisor):
 
     supervisor.porta_serial.enviar.assert_called_once_with("<1,100>")
     assert supervisor.sliders[0].value == 100
-    assert delay == 2800
+    assert delay == 3067
+
+
+@pytest.mark.parametrize(
+    ("difference", "expected"),
+    [(0, 0), (10, 400), (180, 2967)],
+)
+def test_estimativa_de_movimento_considera_aceleracao_e_frenagem(difference, expected):
+    assert app_module.RobixSupervisorio._estimar_tempo_movimento(difference) == expected
 
 
 def test_executar_moveto_motor_acima_do_limite_e_rejeitado(supervisor):
@@ -340,7 +349,7 @@ def test_executar_movepose_inicial_envia_todos_e_usa_maior_diferenca(supervisor)
         call("<6,180>"),
     ]
     assert [slider.value for slider in supervisor.sliders] == [0, 30, 60, 90, 120, 180]
-    assert delay == 2900
+    assert delay == 3167
 
 
 def test_executar_wait_e_comando_desconhecido(supervisor):
@@ -487,6 +496,72 @@ def test_rodar_editor_e_painel_delegam_ao_processador(supervisor):
     supervisor.rodar_execucao()
 
     assert supervisor.processar_codigo.call_args_list == [call("editor"), call("painel")]
+
+
+def test_executar_exemplo_delega_codigo_ao_processador(supervisor):
+    supervisor.exemplo_atual = ROUTINE_EXAMPLES[0]
+    supervisor.processar_codigo = Mock()
+
+    supervisor.executar_exemplo()
+
+    supervisor.processar_codigo.assert_called_once_with(ROUTINE_EXAMPLES[0].code)
+    supervisor.escrever_log.assert_called_once_with("🧪 Executando exemplo: Posição neutra.")
+
+
+def test_abrir_exemplo_no_editor_adiciona_metodo_sem_substituir_codigo(supervisor):
+    supervisor.exemplo_atual = ROUTINE_EXAMPLES[1]
+    supervisor.tela_texto = object()
+    supervisor.mostrar_tela = Mock()
+    supervisor.inserir_metodo_no_editor = Mock()
+
+    supervisor.abrir_exemplo_no_editor()
+
+    supervisor.mostrar_tela.assert_called_once_with(supervisor.tela_texto)
+    supervisor.inserir_metodo_no_editor.assert_called_once_with(
+        ROUTINE_EXAMPLES[1].method_name,
+        ROUTINE_EXAMPLES[1].method_code,
+    )
+
+
+def test_inserir_metodo_acrescenta_ao_editor_e_preserva_conteudo(supervisor):
+    supervisor.caixa_texto_programacao = Mock()
+    supervisor.caixa_texto_programacao.get.return_value = "setup:\n    Wait(1)"
+
+    supervisor.inserir_metodo_no_editor("Abrir", "metodo Abrir:\n    MoveTo(6, 30)\n")
+
+    supervisor.caixa_texto_programacao.insert.assert_called_once_with(
+        "end-1c",
+        "\n\nmetodo Abrir:\n    MoveTo(6, 30)\n",
+    )
+
+
+def test_inserir_metodo_nao_duplica_declaracao_existente(supervisor):
+    supervisor.caixa_texto_programacao = Mock()
+    supervisor.caixa_texto_programacao.get.return_value = "metodo Abrir:\n    MoveTo(6, 30)"
+
+    supervisor.inserir_metodo_no_editor("Abrir", "metodo Abrir:\n    MoveTo(6, 30)\n")
+
+    supervisor.caixa_texto_programacao.insert.assert_not_called()
+    supervisor.escrever_log.assert_called_once_with(
+        "O método 'Abrir' já está presente no Editor.", True
+    )
+
+
+def test_salvar_metodos_do_editor_atualiza_biblioteca(supervisor):
+    supervisor.caixa_texto_programacao = Mock()
+    supervisor.caixa_texto_programacao.get.return_value = "metodo Novo:\n    Wait(10)"
+    supervisor.metodos_usuario = {"Antigo": "metodo Antigo:\n    Wait(1)\n"}
+    supervisor.biblioteca_metodos = Mock()
+    supervisor.atualizar_lista_metodos_editor = Mock()
+
+    supervisor.salvar_metodos_do_editor()
+
+    assert supervisor.metodos_usuario == {
+        "Antigo": "metodo Antigo:\n    Wait(1)\n",
+        "Novo": "metodo Novo:\n    Wait(10)\n",
+    }
+    supervisor.biblioteca_metodos.save.assert_called_once_with(supervisor.metodos_usuario)
+    supervisor.atualizar_lista_metodos_editor.assert_called_once_with()
 
 
 def test_mostrar_tela_interrompe_execucao_e_troca_frame(supervisor):

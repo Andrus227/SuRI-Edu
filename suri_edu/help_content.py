@@ -17,7 +17,7 @@ HELP_TOPICS: dict[str, str] = {
         "   Git Bash: source .venv/Scripts/activate\n"
         "   Linux/macOS: source .venv/bin/activate\n"
         "3. Execute: python -m pip install -r requirements.txt\n"
-        "4. Confira os pinos e grave Servo/Servo.ino.\n"
+        "4. Confira os pinos e grave a versão atual de Servo/Servo.ino.\n"
         "5. Com a área livre, execute: python main.py"
     ),
     "3. Conexão Serial": (
@@ -31,7 +31,8 @@ HELP_TOPICS: dict[str, str] = {
         "Tab avança pelos seis motores; Shift+Tab retorna e a ordem é circular.\n"
         "As setas ajustam o slider selecionado, identificado pelo quadro azul.\n"
         "Mudar o foco não altera o ângulo e o arraste pelo mouse continua disponível.\n"
-        "Tempo Real transmite a cada 50 ms e novamente ao soltar.\n"
+        "Tempo Real transmite no máximo uma vez a cada 50 ms durante alterações e "
+        "novamente ao soltar.\n"
         "Enviar Pose manda motores desconhecidos ou alterados; após conexão ou STOP, "
         "a próxima pose tenta enviar os seis. A faixa 0-180 não é limite mecânico."
     ),
@@ -40,38 +41,62 @@ HELP_TOPICS: dict[str, str] = {
         "Motores: 1-6; ângulos: 0-180; esperas: inteiros não negativos.\n"
         "Blocos: setup (uma vez), loop (repetição) e metodo; use // para comentários.\n"
         "Métodos usam letras, números ou _ e são chamados sem parênteses.\n"
+        "A aba Métodos insere exemplos e snippets pessoais; inserir não executa movimento.\n"
+        "Salvar métodos do código mescla declarações em ~/.suri_edu/metodos.json.\n"
         "O parser localiza comandos mesmo com texto ao redor; use // para desativar linhas.\n"
-        "Arquivos são .txt em UTF-8. Erros são registrados e as linhas seguintes continuam."
+        "Arquivos são .txt UTF-8 e todo salvamento usa Salvar como. Não há autosave nem "
+        "confirmação ao fechar conteúdo não salvo."
     ),
     "6. Painel de Execução": (
         "Carregue uma rotina .txt no Painel (F5) e pressione F9 para iniciar.\n"
         "O Painel é somente leitura; abrir e salvar pertencem ao Editor.\n"
-        "A execução usa callbacks canceláveis e uma geração que invalida etapas antigas.\n"
+        "Trocar de tela cancela etapas locais pendentes e solicita STOP.\n"
         "MovePose usa até seis quadros e pode ser interrompido parcialmente.\n"
-        "Trocar de tela durante uma rotina solicita STOP."
+        "Carregar um arquivo não executa movimento; F9 inicia o conteúdo mostrado."
     ),
-    "7. Atalhos e Parada": (
-        "F1 Manual | F2 Menu | F3 Teach Pendant | F4 Editor | F5 Painel | F9 Executar.\n"
+    "7. Exemplos": (
+        "Use o ícone de laboratório ou F6 para abrir as rotinas de exemplo.\n"
+        "Básicos: PosicaoNeutra, AbrirGarra, FecharGarra e CicloDaGarra.\n"
+        "Eixos: TestarJuntas, VarreduraDaBase e DemonstrarEspacoTrabalho.\n"
+        "Coordenados: PercorrerTresPontos, AcenarRobix e CoreografiaRobix.\n"
+        "Manipulação: InspecionarObjeto e PickAndPlace.\n"
+        "Cada exemplo declara um método e o chama uma vez no setup; nenhum possui loop.\n"
+        "Os exemplos mostram somente os destinos; o firmware atual aplica aceleração e "
+        "frenagem automaticamente, sem exigir passos intermediários no código.\n"
+        "Executar uma vez/F9 movimenta imediatamente com o código original. Adicionar ao "
+        "Editor insere só a declaração: edite-a e chame seu nome no setup ou loop.\n"
+        "Métodos pessoais são mesclados em ~/.suri_edu/metodos.json; remover da biblioteca "
+        "não altera o Editor e dependências não são inseridas automaticamente.\n"
+        "Revise todos os ângulos: 0-180 é a faixa do protocolo, não um limite mecânico."
+    ),
+    "8. Atalhos e Parada": (
+        "F1 Manual | F2 Menu | F3 Teach Pendant | F4 Editor | F5 Painel | "
+        "F6 Exemplos | F9 Executar no Editor, Painel ou Exemplos.\n"
+        "Trocar de tela, inclusive com F6, solicita STOP durante uma rotina.\n"
         "Durante uma rotina, Espaço e STOP cancelam etapas e tentam enviar <STOP,id>.\n"
         "O botão também atua fora da rotina; Espaço então mantém seu comportamento normal.\n"
         "O ACK é aguardado por 1 s. Após falha ou timeout, STOP permite nova tentativa.\n"
         "O Arduino congela alvos e mantém PWM, mas não mede posição ou torque físico.\n"
-        "A serial é FIFO e não garante latência máxima para a parada."
+        "A serial é FIFO e não garante latência máxima para a parada. Nova rotina e "
+        "fechamento não aguardam o ACK do STOP anterior."
     ),
-    "8. Estado e Sincronização": (
+    "9. Estado e Sincronização": (
         "Desejado: posição solicitada. Comandado: quadro aceito pela API serial.\n"
         "Confirmado exigiria telemetria ou sensor; atualmente permanece desconhecido.\n"
         "Não existe ACK de movimento ou medição física contínua.\n"
         "O ACK de STOP confirma processamento lógico, não posição, torque ou sustentação."
     ),
-    "9. Troubleshooting": (
+    "10. Troubleshooting": (
         "Nenhuma porta: verifique cabo, driver, alimentação e use Atualizar.\n"
         "Erro serial: confirme a porta, 115200 baud e o firmware.\n"
         "Sem ACK de STOP: não assuma que o controlador interrompeu o movimento.\n"
         "Sintaxe inválida: confira comandos, parâmetros, faixa e indentação.\n"
-        "Movimento ao conectar: é a inicialização do firmware em 90 graus."
+        "Biblioteca vazia: salve novamente; JSON ausente, ilegível ou inválido é ignorado.\n"
+        "Movimento ao conectar: é a inicialização do firmware em 90 graus.\n"
+        "Movimento ainda brusco: regrave o firmware atual e verifique fonte, carga, folgas, "
+        "servo danificado e possíveis colisões."
     ),
-    "10. Suporte e Próximos Passos": (
+    "11. Suporte e Próximos Passos": (
         "Planejado: ACK de movimento, telemetria, protocolo versionado e sensores.\n"
         "Também estão previstas visualização esquemática/3D e evolução visual da GUI.\n"
         "Ao relatar falhas, envie sistema, Python, passos, rotina e log.\n"

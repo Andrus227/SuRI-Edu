@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import textwrap
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
@@ -121,6 +122,45 @@ def generate_routine(name: str, poses: Sequence[str]) -> str:
     code += "    // Execução contínua\n"
     code += f"    {method_name}\n"
     return code
+
+
+def extract_method_sources(source: str) -> dict[str, str]:
+    """Extract and normalize declared method blocks for later reuse."""
+    lines = source.splitlines()
+    methods: dict[str, str] = {}
+    index = 0
+
+    while index < len(lines):
+        raw_line = lines[index]
+        command = raw_line.split("//", maxsplit=1)[0].strip()
+        match = _METHOD_DECLARATION.search(command)
+        if match is None:
+            index += 1
+            continue
+
+        name = match.group(1)
+        base_indentation = len(raw_line) - len(raw_line.lstrip())
+        body: list[str] = []
+        index += 1
+        while index < len(lines):
+            candidate = lines[index]
+            if not candidate.strip():
+                body.append(candidate)
+                index += 1
+                continue
+            indentation = len(candidate) - len(candidate.lstrip())
+            if indentation <= base_indentation:
+                break
+            body.append(candidate)
+            index += 1
+
+        body_text = textwrap.dedent("\n".join(body)).rstrip()
+        method_source = f"metodo {name}:\n"
+        if body_text:
+            method_source += textwrap.indent(body_text, "    ") + "\n"
+        methods[name] = method_source
+
+    return methods
 
 
 def parse_command(source: str) -> RobixCommand | None:

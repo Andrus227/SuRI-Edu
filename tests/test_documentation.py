@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from suri_edu.help_content import HELP_TOPICS
+from suri_edu.routine_examples import ROUTINE_EXAMPLES
 
 ROOT = Path(__file__).parents[1]
 DOCS = ROOT / "Instrucoes"
@@ -60,3 +61,42 @@ def test_documentacao_registra_contratos_operacionais_essenciais():
     assert "31 bytes" in protocol
     assert "não é atômico" in manual
     assert "UTF-8" in manual
+
+
+def test_catalogo_de_metodos_esta_documentado_nos_tres_manuais():
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    manual = (DOCS / "HELP.md").read_text(encoding="utf-8")
+    integrated_help = "\n".join(HELP_TOPICS.values())
+
+    for example in ROUTINE_EXAMPLES:
+        assert example.method_name in readme
+        assert example.method_name in manual
+        assert example.method_name in integrated_help
+
+
+def test_documentacao_explica_biblioteca_persistente_e_execucao_dos_exemplos():
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    manual = (DOCS / "HELP.md").read_text(encoding="utf-8")
+    integrated_help = "\n".join(HELP_TOPICS.values())
+
+    for documentation in (readme, manual, integrated_help):
+        assert "~/.suri_edu/metodos.json" in documentation
+        assert "F6" in documentation
+        assert "F9" in documentation
+
+
+def test_documentacao_explica_suavizacao_global_e_suas_excecoes():
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    manual = (DOCS / "HELP.md").read_text(encoding="utf-8")
+    protocol = (DOCS / "PROTOCOL.md").read_text(encoding="utf-8")
+
+    for documentation in (readme, manual, protocol):
+        assert "aceleração" in documentation
+        assert "firmware" in documentation
+        assert "STOP" in documentation
+        assert "90 graus" in documentation
+
+    examples_help = HELP_TOPICS["7. Exemplos"]
+    assert "aceleração" in examples_help
+    assert "frenagem" in examples_help
+    assert "passos intermediários" in examples_help

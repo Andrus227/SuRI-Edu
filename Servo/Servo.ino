@@ -1,4 +1,5 @@
 #include <Servo.h>
+#include <math.h>
 
 // SuRI-EDU - Firmware para controle do braço Robix
 // Definição dos pinos PWM (Ajuste para as portas reais do seu Arduino)
@@ -8,14 +9,16 @@ Servo motores[6];
 // Arrays de estado para a Interpolação Matemática
 float posicaoAtual[6] = {90.0, 90.0, 90.0, 90.0, 90.0, 90.0};
 float posicaoAlvo[6]  = {90.0, 90.0, 90.0, 90.0, 90.0, 90.0};
+float velocidadeAtual[6] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
 
 // Variáveis para controle de tempo "Multitarefa" (Sem usar delay!)
 unsigned long ultimoTempo[6] = {0, 0, 0, 0, 0, 0};
 
-// --- CONFIGURAÇÃO DA VELOCIDADE DO ROBÔ ---
-// Tempo em milissegundos que o motor leva para andar 1 grau.
-// 15ms = Rápido e suave | 30ms = Lento para processos precisos
-const int VELOCIDADE_MS = 15; 
+// --- PERFIL GLOBAL DE MOVIMENTO ---
+// Todos os comandos usam aceleração e desaceleração automáticas no firmware.
+const unsigned long INTERVALO_ATUALIZACAO_MS = 10;
+const float VELOCIDADE_MAX_GRAUS_MS = 1.0 / 15.0;
+const float ACELERACAO_GRAUS_MS2 = 0.00025;
 
 // Buffer de um quadro: até 31 caracteres entre '<' e '>'.
 const byte numChars = 32;
@@ -24,11 +27,13 @@ bool newData = false;
 
 void setup() {
   Serial.begin(115200); // Mesma velocidade cravada no Python
+  unsigned long tempoInicial = millis();
   
   // Inicializa os 6 motores na posição de descanso (90 graus)
   for (int i = 0; i < 6; i++) {
     motores[i].attach(pinosMotores[i]);
-    motores[i].write(90); 
+    motores[i].write(90);
+    ultimoTempo[i] = tempoInicial;
   }
 }
 
@@ -119,6 +124,8 @@ void processarComando() {
     // Congela os alvos e mantém os servos anexados; torque físico não é medido.
     for (int i = 0; i < 6; i++) {
       posicaoAlvo[i] = posicaoAtual[i];
+      velocidadeAtual[i] = 0.0;
+      motores[i].write((int)round(posicaoAtual[i]));
     }
     if (idParada == NULL) {
       Serial.println("<ACK,STOP>");
@@ -156,29 +163,51 @@ void processarComando() {
   }
 }
 
-// Faz a mágica da interpolação baseada em tempo
+// Aplica um perfil triangular/trapezoidal limitado por aceleração.
 void atualizarMotoresSuavemente() {
   unsigned long tempoAtual = millis();
-  
-  for (int i = 0; i < 6; i++) {
-    // Se o motor ainda não chegou na posição alvo
-    if (posicaoAtual[i] != posicaoAlvo[i]) {
-      
-      // Checa se já passou o tempo (VELOCIDADE_MS) para dar o próximo 'passo'
-      if (tempoAtual - ultimoTempo[i] >= VELOCIDADE_MS) {
-        ultimoTempo[i] = tempoAtual;
-        
-        // Decide a direção do movimento
-        if (posicaoAtual[i] < posicaoAlvo[i]) {
-          posicaoAtual[i]++; // Sobe 1 grau
-        } else {
-          posicaoAtual[i]--; // Desce 1 grau
-        }
-        
-        // Envia o sinal físico para o hardware
-        motores[i].write((int)posicaoAtual[i]);
 
-      }
+  for (int i = 0; i < 6; i++) {
+    unsigned long tempoDecorrido = tempoAtual - ultimoTempo[i];
+    if (tempoDecorrido < INTERVALO_ATUALIZACAO_MS) {
+      continue;
     }
+    ultimoTempo[i] = tempoAtual;
+
+    // Limita saltos após pausas longas sem bloquear a recepção serial.
+    float deltaTempo = min((float)tempoDecorrido, 50.0f);
+    float distancia = posicaoAlvo[i] - posicaoAtual[i];
+    if (fabs(distancia) < 0.05) {
+      bool precisaAtualizar = posicaoAtual[i] != posicaoAlvo[i] || velocidadeAtual[i] != 0.0;
+      posicaoAtual[i] = posicaoAlvo[i];
+      velocidadeAtual[i] = 0.0;
+      if (precisaAtualizar) {
+        motores[i].write((int)round(posicaoAtual[i]));
+      }
+      continue;
+    }
+
+    float direcao = distancia >= 0.0 ? 1.0 : -1.0;
+    float velocidadeDeFrenagem = sqrt(2.0 * ACELERACAO_GRAUS_MS2 * fabs(distancia));
+    float moduloAlvo = min(VELOCIDADE_MAX_GRAUS_MS, velocidadeDeFrenagem);
+    float velocidadeAlvo = direcao * moduloAlvo;
+    float variacaoMaxima = ACELERACAO_GRAUS_MS2 * deltaTempo;
+
+    if (velocidadeAtual[i] < velocidadeAlvo) {
+      velocidadeAtual[i] = min(velocidadeAtual[i] + variacaoMaxima, velocidadeAlvo);
+    } else {
+      velocidadeAtual[i] = max(velocidadeAtual[i] - variacaoMaxima, velocidadeAlvo);
+    }
+
+    float passo = velocidadeAtual[i] * deltaTempo;
+    bool alcancouAlvo = (distancia > 0.0 && passo >= distancia) ||
+                        (distancia < 0.0 && passo <= distancia);
+    if (alcancouAlvo) {
+      posicaoAtual[i] = posicaoAlvo[i];
+      velocidadeAtual[i] = 0.0;
+    } else {
+      posicaoAtual[i] = constrain(posicaoAtual[i] + passo, 0.0f, 180.0f);
+    }
+    motores[i].write((int)round(posicaoAtual[i]));
   }
 }

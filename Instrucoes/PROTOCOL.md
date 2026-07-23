@@ -35,6 +35,17 @@ Um movimento válido não produz ACK. Um retorno completo da API de escrita sign
 
 `MovePose` pertence à linguagem da aplicação, não ao protocolo serial. Ele é expandido em até seis quadros `<motor,angulo>` independentes e não é atômico.
 
+O ângulo do quadro é um destino, não um passo instantâneo. Para todos os movimentos recebidos, o firmware calcula independentemente em cada motor um perfil triangular ou trapezoidal limitado por velocidade e aceleração. A atualização ocorre sem `delay()`, preservando a recepção serial durante aceleração, cruzeiro e frenagem. Código Robix, Teach Pendant e biblioteca de métodos usam esse mesmo comportamento sem transmitir degraus intermediários.
+
+Parâmetros atuais do firmware:
+
+- atualização do perfil: 10 ms;
+- velocidade máxima: 1 grau a cada 15 ms;
+- aceleração: 0,00025 grau/ms²;
+- intervalo decorrido considerado em uma atualização: no máximo 50 ms.
+
+Esses parâmetros são parte da implementação do movimento, não do formato do quadro. Um firmware antigo pode aceitar o mesmo protocolo e ainda usar interpolação de velocidade constante.
+
 ## Parada Controlada
 
 Solicitação identificada:
@@ -54,6 +65,8 @@ Confirmação:
 O firmware também aceita o formato legado `<STOP>` e responde `<ACK,STOP>`. A GUI atual sempre usa o formato identificado e não faz fallback automático para firmware antigo.
 
 Ao processar um STOP válido, o firmware copia `posicaoAtual` para `posicaoAlvo` nos seis motores e mantém os objetos `Servo` anexados. A trajetória anterior não é retomada. O firmware continua solicitando o último PWM, mas não mede nem garante torque físico, posição ou capacidade de sustentação.
+
+O STOP também zera imediatamente a velocidade calculada. Ele não usa rampa de desaceleração, pois prolongar deliberadamente a trajetória seria incompatível com a intenção de parada.
 
 ## Ordem E Limites Da Parada
 
@@ -80,9 +93,13 @@ Prazos atuais:
 
 Após falha ou falta de confirmação, uma nova solicitação STOP recebe outro ID. Uma conexão e todo STOP invalidam o estado comandado dos movimentos.
 
+Na parada normal, o supervisório consulta o ACK por até 1 segundo. Ao iniciar outra rotina durante uma execução, ele solicita STOP, cancela a consulta anterior e começa o novo código sem esperar a confirmação. Ao fechar a aplicação, também tenta enviar STOP e desconecta sem aguardar ACK. Esses fluxos são best-effort e não aumentam as garantias físicas descritas acima. Trocas de tela, inclusive para Exemplos com `F6`, seguem o fluxo normal de parada da interface.
+
 ## Inicialização Do Firmware
 
 No `setup`, o Arduino anexa os servos nos pinos 8 a 13 e solicita 90 graus para todos. Abrir a serial normalmente reinicia a placa e pode produzir esse movimento antes de qualquer quadro do supervisório.
+
+Como não há leitura da posição física inicial, esse primeiro movimento para 90 graus não pode usar um perfil baseado na posição real. A suavização global aplica-se aos alvos recebidos depois da inicialização.
 
 Os limites de 0 a 180 são apenas a faixa geral do protocolo. Não existem limites mecânicos por junta, prevenção de colisão, leitura de corrente ou fim de curso.
 

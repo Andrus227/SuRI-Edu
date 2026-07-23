@@ -58,6 +58,8 @@ No Linux, Tk, `venv`, drivers USB e permissão de acesso à serial podem exigir 
 
 Uma transmissão que falha ou seja parcial não atualiza o estado comandado. Em uma pose com vários motores, somente os quadros enviados integralmente permanecem conhecidos.
 
+O firmware atual aplica aceleração e desaceleração automaticamente a todo alvo recebido. Grave novamente `Servo/Servo.ino` para utilizar essa suavização; alterar apenas a aplicação Python não atualiza uma placa que ainda esteja com firmware antigo.
+
 ## 4. Teach Pendant
 
 - Arraste os sliders ou use os botões `-10`, `-1`, `+1` e `+10`.
@@ -74,13 +76,40 @@ O estado comandado é desconhecido na inicialização, em conexões e após STOP
 
 Os controles aceitam de 0 a 180 graus. Essa é apenas a faixa do protocolo, não um limite mecânico seguro para todas as montagens.
 
+Movimentos do Teach Pendant, inclusive atualizações em Tempo Real, enviam destinos. O Arduino calcula em segundo plano a velocidade, aceleração e frenagem de cada servo; a interface não precisa gerar degraus intermediários.
+
 ## 5. Editor, Arquivos E Exportação
 
-- O Editor (F4) abre e salva arquivos `.txt` em UTF-8.
+- O Editor (F4) abre e salva arquivos `.txt` em UTF-8; todo salvamento usa "Salvar como".
 - O Painel de Execução (F5) carrega o arquivo em modo somente leitura.
 - Exportar não grava no disco: substitui o conteúdo atual do Editor.
-- Abrir outro arquivo ou exportar não solicita confirmação para conteúdo não salvo.
+- Não há salvamento automático, indicador de alterações ou confirmação ao abrir, exportar ou fechar com conteúdo não salvo.
 - O nome exportado deve conter somente letras, números e `_`, sem espaços.
+
+Os pontos capturados no Teach Pendant existem somente na memória até a exportação. O código gerado declara um método, acrescenta `Wait(1000)` após cada ponto, usa a primeira pose em `setup` e chama o método em um `loop` contínuo. Portanto, `F9` repetirá a sequência até STOP, troca de tela ou encerramento.
+
+### Exemplos integrados
+
+O ícone `🧪` ou `F6` abre a galeria. A prévia é somente leitura. Cada exemplo declara um método e o chama uma vez em `setup`; nenhum contém `loop`.
+
+Métodos incorporados:
+
+- `PosicaoNeutra`, `AbrirGarra`, `FecharGarra` e `CicloDaGarra` para operações básicas;
+- `TestarJuntas`, `VarreduraDaBase` e `DemonstrarEspacoTrabalho` para conhecer os eixos;
+- `PercorrerTresPontos`, `AcenarRobix` e `CoreografiaRobix` para movimentos coordenados;
+- `InspecionarObjeto` e `PickAndPlace` para demonstrações de manipulação.
+
+"Executar uma vez" ou `F9` inicia imediatamente o exemplo selecionado com seus ângulos originais. "Adicionar método ao Editor" acrescenta somente a declaração ao fim do código, sem apagar o conteúdo, criar uma chamada ou executar movimento. Para usá-la, chame o nome em `setup`, `loop` ou outro método. Uma declaração de mesmo nome não é duplicada e dependências entre métodos devem ser inseridas separadamente.
+
+Os exemplos são fixos e não podem ser removidos. Seus ângulos são referências didáticas: revise limites mecânicos, orientação dos servos, ferramenta, objeto e obstáculos antes da execução direta.
+
+Os métodos permanecem legíveis porque registram somente destinos. A suavização é global no firmware e não aparece como várias linhas intermediárias de `MoveTo` ou `MovePose`.
+
+### Biblioteca pessoal de métodos
+
+A aba "Métodos" do Editor também gerencia snippets pessoais. "Salvar métodos do código" extrai todas as declarações `metodo Nome:` do Editor e as mescla em `~/.suri_edu/metodos.json`. Um nome existente é atualizado, enquanto métodos salvos que não estão no Editor são preservados. A biblioteca não injeta métodos automaticamente na rotina: clique no item para inseri-lo antes de executar.
+
+O botão `×` remove um método pessoal após confirmação, mas não remove a declaração do Editor aberto. Se o arquivo JSON estiver ausente, ilegível ou inválido, a aplicação inicia com a biblioteca pessoal vazia; os exemplos incorporados continuam disponíveis.
 
 ## 6. Linguagem Robix
 
@@ -118,15 +147,15 @@ loop:
 
 Por compatibilidade com rotinas antigas, o parser procura `MoveTo`, `MovePose` e `Wait` dentro da linha, mesmo se houver texto antes ou depois da chamada. Portanto, não tente desativar um comando acrescentando texto: use `//`. Conteúdo depois dos dois-pontos de uma declaração de método também não faz parte do corpo.
 
-As esperas e estimativas de movimento são agendadas sem `sleep` na interface. A aplicação estima 15 ms por grau, mais 100 ms para `MoveTo` ou 200 ms para `MovePose`. Estado anterior desconhecido é estimado como 180 graus. Falha total ou ausência de motores alterados usa atraso zero; em falha parcial de `MovePose`, apenas envios bem-sucedidos entram na estimativa. A rotina continua após falhas, portanto inclua `Wait` em loops para evitar novas tentativas em alta frequência. Esses tempos não são medição física nem confirmação do Arduino. Conexão e escrita serial ainda são síncronas e podem causar pequenas pausas.
+As esperas e estimativas de movimento são agendadas sem `sleep` na interface. A aplicação estima a duração com o mesmo limite de velocidade e aceleração configurado no firmware, mais 100 ms para `MoveTo` ou 200 ms para `MovePose`. Movimentos curtos usam perfil triangular; movimentos longos atingem velocidade máxima e usam perfil trapezoidal. Estado anterior desconhecido é estimado como 180 graus. Falha total ou ausência de motores alterados usa atraso zero; em falha parcial de `MovePose`, apenas envios bem-sucedidos entram na estimativa. A rotina continua após falhas, portanto inclua `Wait` em loops para evitar novas tentativas em alta frequência. Esses tempos não são medição física nem confirmação do Arduino. Conexão e escrita serial ainda são síncronas e podem causar pequenas pausas.
 
 ## 7. Execução E Parada
 
-F9 inicia o código quando o Editor ou o Painel está visível. Trocar de tela com F2 a F5 ou pelos botões de navegação durante uma rotina solicita a mesma parada controlada do STOP. Abrir a ajuda com F1 não troca de tela nem para a rotina.
+F9 inicia o código quando o Editor, o Painel ou Exemplos está visível. Trocar de tela com F2 a F6 ou pelos botões de navegação durante uma rotina solicita a mesma parada controlada do STOP. Abrir a ajuda com F1 não troca de tela nem para a rotina.
 
 Durante uma rotina, espaço ou STOP:
 
-1. cancelam o callback atual e os comandos locais ainda não executados;
+1. cancelam o callback pendente e impedem as próximas etapas locais;
 2. invalidam o estado comandado;
 3. tentam escrever `<STOP,id>` diretamente;
 4. aguardam até 1 segundo pelo `<ACK,STOP,id>` correspondente se a escrita for completa.
@@ -145,6 +174,8 @@ Iniciar outra rotina durante uma execução envia STOP, mas não espera seu ACK 
 
 O firmware congela os alvos na última etapa interpolada, mantém os servos anexados e continua solicitando o último PWM. Isso não garante torque físico, posição ou sustentação. O transporte serial é FIFO, portanto bytes já enviados permanecem antes do STOP e não há garantia de latência máxima.
 
+O perfil suave vale para movimentos comandados depois da inicialização. Ao anexar os servos, o firmware ainda solicita 90 graus sem conhecer a posição física inicial. O STOP zera a velocidade imediatamente, sem rampa de desaceleração, para não prolongar intencionalmente o movimento após uma parada solicitada.
+
 > **Limitação de segurança:** STOP e espaço dependem do computador, aplicação, cabo, porta serial, firmware e alimentação. Eles não substituem uma parada de emergência física, cabeada e independente do software.
 
 ## 8. Atalhos
@@ -154,7 +185,8 @@ O firmware congela os alvos na última etapa interpolada, mantém os servos anex
 - F3: Teach Pendant;
 - F4: Editor;
 - F5: Painel de Execução;
-- F9: iniciar rotina no Editor ou Painel;
+- F6: Exemplos;
+- F9: iniciar o código no Editor, Painel ou Exemplos; nas outras telas, registrar aviso;
 - Espaço: parada controlada durante rotina ativa;
 - Tab e Shift+Tab: navegar entre motores no Teach Pendant;
 - Setas: ajustar o motor selecionado.
@@ -173,6 +205,8 @@ O modelo publica snapshots com horário, origem, conexão, rotina, parada e falh
 
 **Movimento ao conectar:** é a inicialização prevista em 90 graus após o reset da placa.
 
+**Movimento ainda brusco:** confirme que o firmware atual foi gravado, reduza carga e folgas mecânicas e revise alimentação. A suavização não compensa fonte inadequada, servo danificado ou colisão.
+
 **Erro serial:** confirme a porta, 115200 baud e o firmware correto.
 
 **Parada sem confirmação:** a rotina local foi cancelada, mas não houve ACK correspondente. Não assuma que o controlador parou; use a parada física se houver risco.
@@ -180,6 +214,8 @@ O modelo publica snapshots com horário, origem, conexão, rotina, parada e falh
 **Sintaxe não reconhecida:** confira comando, parâmetros, faixa e indentação. A rotina pode continuar nas linhas seguintes.
 
 **Recursão detectada:** remova a chamada direta ou indireta do método para ele mesmo.
+
+**Biblioteca pessoal vazia:** confirme `~/.suri_edu/metodos.json`. Um arquivo ausente, ilegível ou inválido é ignorado; salve novamente os métodos pelo Editor.
 
 ## 11. Evoluções Planejadas E Suporte
 

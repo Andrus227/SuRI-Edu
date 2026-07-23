@@ -6,6 +6,7 @@ from suri_edu.robix_language import (
     MovePoseCommand,
     MoveToCommand,
     WaitCommand,
+    extract_method_sources,
     generate_routine,
     parse_command,
     parse_program,
@@ -58,6 +59,30 @@ def test_generate_routine_usa_nome_padrao_e_formato_legado():
 def test_generate_routine_rejeita_nome_que_o_parser_nao_reconhece():
     with pytest.raises(ValueError, match="apenas letras"):
         generate_routine("Minha Rotina", ["MovePose(1, 2, 3, 4, 5, 6)\n"])
+
+
+def test_extract_method_sources_preserva_corpo_e_normaliza_indentacao():
+    source = """
+    metodo Pegar:
+        // comentário importante
+        MoveTo(6, 100)
+
+    setup:
+        Pegar
+"""
+
+    assert extract_method_sources(source) == {
+        "Pegar": "metodo Pegar:\n    // comentário importante\n    MoveTo(6, 100)\n"
+    }
+
+
+def test_extract_method_sources_retorna_todos_os_metodos():
+    source = "metodo A:\n    Wait(1)\nmetodo B:\n    A\n"
+
+    assert extract_method_sources(source) == {
+        "A": "metodo A:\n    Wait(1)\n",
+        "B": "metodo B:\n    A\n",
+    }
 
 
 @pytest.mark.parametrize(

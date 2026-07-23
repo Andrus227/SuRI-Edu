@@ -1,29 +1,39 @@
 import logging
+import math
 import time
 import tkinter as tk
 from collections import deque
 from collections.abc import Callable
 from pathlib import Path
-from tkinter import filedialog
+from tkinter import filedialog, messagebox
 
 import customtkinter as ctk
 
 from .gui_components import DicionarioComandos, EditorComLinhas, ToolTip
 from .help_content import HELP_TOPICS
+from .method_library import MethodLibrary
 from .motor_controller import MOTOR_COUNT, MotorController
 from .robix_language import (
     MovePoseCommand,
     MoveToCommand,
     WaitCommand,
+    extract_method_sources,
     generate_routine,
     parse_command,
     parse_program,
+)
+from .routine_examples import (
+    ROUTINE_EXAMPLES,
+    RoutineExample,
+    get_routine_example,
 )
 from .serial_manager import MAX_STOP_ID, GerenciadorSerial, format_stop_ack
 
 MIN_ANGLE = 0
 MAX_ANGLE = 180
 MILLISECONDS_PER_DEGREE = 15
+MAX_SPEED_DEGREES_PER_MS = 1 / MILLISECONDS_PER_DEGREE
+ACCELERATION_DEGREES_PER_MS2 = 0.00025
 MOVE_TO_SETTLING_MS = 100
 MOVE_POSE_SETTLING_MS = 200
 REAL_TIME_THROTTLE_SECONDS = 0.05
@@ -35,7 +45,11 @@ logger = logging.getLogger(__name__)
 
 
 class RobixSupervisorio(ctk.CTk):
-    def __init__(self, serial_manager: GerenciadorSerial | None = None) -> None:
+    def __init__(
+        self,
+        serial_manager: GerenciadorSerial | None = None,
+        method_library: MethodLibrary | None = None,
+    ) -> None:
         super().__init__()
 
         self.title("SuRI-EDU - Supervisório Educacional")
@@ -61,6 +75,8 @@ class RobixSupervisorio(ctk.CTk):
         self.motor_selecionado_idx = 0
         self.frames_motores = []
         self.metodos_salvos = {}
+        self.biblioteca_metodos = method_library if method_library is not None else MethodLibrary()
+        self.metodos_usuario = self.biblioteca_metodos.load()
 
         self.porta_serial = serial_manager if serial_manager is not None else GerenciadorSerial()
         self.controle_motores = MotorController(
@@ -86,11 +102,13 @@ class RobixSupervisorio(ctk.CTk):
         self.tela_slider = ctk.CTkFrame(self.frame_telas, fg_color="transparent")
         self.tela_texto = ctk.CTkFrame(self.frame_telas, fg_color="transparent")
         self.tela_executar = ctk.CTkFrame(self.frame_telas, fg_color="transparent")
+        self.tela_exemplos = ctk.CTkFrame(self.frame_telas, fg_color="transparent")
 
         self.construir_menu_inicial()
         self.construir_tela_slider()
         self.construir_tela_texto()
         self.construir_tela_executar()
+        self.construir_tela_exemplos()
 
         self.configurar_atalhos_teclado()
         self.protocol("WM_DELETE_WINDOW", self.fechar_aplicacao)
@@ -157,6 +175,7 @@ class RobixSupervisorio(ctk.CTk):
         self.bind("<F3>", lambda e: self.mostrar_tela(self.tela_slider))
         self.bind("<F4>", lambda e: self.mostrar_tela(self.tela_texto))
         self.bind("<F5>", lambda e: self.mostrar_tela(self.tela_executar))
+        self.bind("<F6>", lambda e: self.mostrar_tela(self.tela_exemplos))
         self.bind("<F9>", self.rodar_rotina_f9)
 
         self.bind("<Tab>", lambda e: self.navegar_motores(e, 1))
@@ -178,8 +197,13 @@ class RobixSupervisorio(ctk.CTk):
             self.rodar_f()
         elif self.tela_executar.winfo_ismapped():
             self.rodar_execucao()
+        elif self.__dict__.get("tela_exemplos") is not None and self.tela_exemplos.winfo_ismapped():
+            self.executar_exemplo()
         else:
-            self.escrever_log("⚠️ Pressione F4 (Editor) ou F5 (Painel) antes de usar F9.", True)
+            self.escrever_log(
+                "⚠️ Pressione F4 (Editor), F5 (Painel) ou F6 (Exemplos) antes de usar F9.",
+                True,
+            )
 
     def acao_espaco_emergencia(self, event: tk.Event | None) -> str | None:
         if not self.rotina_em_execucao:
@@ -231,7 +255,11 @@ class RobixSupervisorio(ctk.CTk):
             self.solicitar_parada_imediata()
         else:
             self.parar_execucao = True
-        for t in [self.tela_menu_inicial, self.tela_slider, self.tela_texto, self.tela_executar]:
+        telas = [self.tela_menu_inicial, self.tela_slider, self.tela_texto, self.tela_executar]
+        tela_exemplos = self.__dict__.get("tela_exemplos")
+        if tela_exemplos is not None:
+            telas.append(tela_exemplos)
+        for t in telas:
             t.place_forget()
         tela_destino.place(relx=0, rely=0, relwidth=1, relheight=1)
         if tela_destino is self.tela_slider:
@@ -250,6 +278,7 @@ class RobixSupervisorio(ctk.CTk):
             ("🎮", self.tela_slider, "Teach Pendant (F3)"),
             ("📝", self.tela_texto, "Editor (F4)"),
             ("🚀", self.tela_executar, "Painel de Execução (F5)"),
+            ("🧪", self.tela_exemplos, "Exemplos (F6)"),
         ]
 
         for icon, target, hint in nav_botoes:
@@ -507,6 +536,20 @@ class RobixSupervisorio(ctk.CTk):
     def _diferenca_movimento(angulo_anterior: int | None, angulo_alvo: int) -> int:
         return MAX_ANGLE if angulo_anterior is None else abs(angulo_alvo - angulo_anterior)
 
+    @staticmethod
+    def _estimar_tempo_movimento(diferenca: int) -> int:
+        if diferenca <= 0:
+            return 0
+        limite_triangular = MAX_SPEED_DEGREES_PER_MS**2 / ACCELERATION_DEGREES_PER_MS2
+        if diferenca <= limite_triangular:
+            duracao = 2 * math.sqrt(diferenca / ACCELERATION_DEGREES_PER_MS2)
+        else:
+            duracao = (
+                diferenca / MAX_SPEED_DEGREES_PER_MS
+                + MAX_SPEED_DEGREES_PER_MS / ACCELERATION_DEGREES_PER_MS2
+            )
+        return math.ceil(duracao)
+
     def _executar_pose_em_etapas(self, comando: MovePoseCommand, geracao: int) -> None:
         if any(not MIN_ANGLE <= angulo <= MAX_ANGLE for angulo in comando.angles):
             self.escrever_log("MovePose contém ângulo fora do intervalo de 0 a 180.", True)
@@ -528,7 +571,7 @@ class RobixSupervisorio(ctk.CTk):
                 return
             if indice >= len(motores):
                 atraso = (
-                    max(diferencas_enviadas) * MILLISECONDS_PER_DEGREE + MOVE_POSE_SETTLING_MS
+                    self._estimar_tempo_movimento(max(diferencas_enviadas)) + MOVE_POSE_SETTLING_MS
                     if diferencas_enviadas
                     else 0
                 )
@@ -596,7 +639,7 @@ class RobixSupervisorio(ctk.CTk):
             if not resultado.sent:
                 return 0
             diferenca = self._diferenca_movimento(angulo_anterior, angulo)
-            return (diferenca * MILLISECONDS_PER_DEGREE) + MOVE_TO_SETTLING_MS
+            return self._estimar_tempo_movimento(diferenca) + MOVE_TO_SETTLING_MS
 
         if isinstance(comando, MovePoseCommand):
             if any(not MIN_ANGLE <= angulo <= MAX_ANGLE for angulo in comando.angles):
@@ -623,7 +666,7 @@ class RobixSupervisorio(ctk.CTk):
                 )
                 for motor in resultado.sent
             )
-            return (max_diferenca * MILLISECONDS_PER_DEGREE) + MOVE_POSE_SETTLING_MS
+            return self._estimar_tempo_movimento(max_diferenca) + MOVE_POSE_SETTLING_MS
 
         if isinstance(comando, WaitCommand):
             return comando.milliseconds
@@ -633,9 +676,22 @@ class RobixSupervisorio(ctk.CTk):
 
     def construir_menu_inicial(self):
         self.criar_toolbar_global(self.tela_menu_inicial, "MENU PRINCIPAL")
-        ctk.CTkLabel(self.tela_menu_inicial, text="SuRI-EDU", font=("Arial", 40, "bold")).pack(
-            expand=True
-        )
+        centro = ctk.CTkFrame(self.tela_menu_inicial, fg_color="transparent")
+        centro.pack(expand=True)
+        ctk.CTkLabel(centro, text="SuRI-EDU", font=("Arial", 40, "bold")).pack(pady=10)
+        ctk.CTkLabel(
+            centro,
+            text="Supervisório Educacional para o braço Robix",
+            font=("Arial", 16),
+            text_color="gray70",
+        ).pack(pady=(0, 25))
+        ctk.CTkButton(
+            centro,
+            text="🧪  EXPLORAR EXEMPLOS",
+            height=45,
+            font=("Arial", 14, "bold"),
+            command=lambda: self.mostrar_tela(self.tela_exemplos),
+        ).pack()
 
     def construir_tela_slider(self):
         self.criar_toolbar_global(
@@ -795,7 +851,156 @@ class RobixSupervisorio(ctk.CTk):
 
         self.caixa_texto_programacao = EditorComLinhas(f_ed)
         self.caixa_texto_programacao.pack(side="left", fill="both", expand=True)
-        DicionarioComandos(f_ed, width=300).pack(side="right", fill="y", padx=(10, 0))
+
+        painel_lateral = ctk.CTkTabview(f_ed, width=300)
+        painel_lateral.pack(side="right", fill="y", padx=(10, 0))
+        aba_sintaxe = painel_lateral.add("Sintaxe")
+        aba_metodos = painel_lateral.add("Métodos")
+        DicionarioComandos(aba_sintaxe).pack(fill="both", expand=True)
+
+        ctk.CTkLabel(
+            aba_metodos,
+            text="BIBLIOTECA DE MÉTODOS",
+            font=("Arial", 11, "bold"),
+            text_color="#569CD6",
+        ).pack(fill="x", pady=(5, 3))
+        ctk.CTkLabel(
+            aba_metodos,
+            text="Clique em um método para adicioná-lo ao código.",
+            font=("Arial", 10),
+            text_color="gray70",
+            wraplength=250,
+        ).pack(fill="x", padx=5, pady=(0, 5))
+
+        self.lista_metodos_editor = ctk.CTkScrollableFrame(
+            aba_metodos,
+            fg_color="transparent",
+        )
+        self.lista_metodos_editor.pack(fill="both", expand=True)
+        ctk.CTkButton(
+            aba_metodos,
+            text="💾 Salvar métodos do código",
+            command=self.salvar_metodos_do_editor,
+        ).pack(fill="x", padx=5, pady=(8, 5))
+        self.atualizar_lista_metodos_editor()
+
+    def atualizar_lista_metodos_editor(self) -> None:
+        for child in self.lista_metodos_editor.winfo_children():
+            child.destroy()
+
+        self._adicionar_titulo_biblioteca("EXEMPLOS")
+        for exemplo in ROUTINE_EXAMPLES:
+            self._adicionar_item_biblioteca(
+                exemplo.method_name,
+                exemplo.method_code,
+            )
+
+        self._adicionar_titulo_biblioteca("MEUS MÉTODOS")
+        if not self.metodos_usuario:
+            ctk.CTkLabel(
+                self.lista_metodos_editor,
+                text="Nenhum método salvo.",
+                font=("Arial", 10),
+                text_color="gray60",
+            ).pack(fill="x", padx=5, pady=5)
+            return
+
+        for nome, codigo in sorted(self.metodos_usuario.items()):
+            self._adicionar_item_biblioteca(nome, codigo, removivel=True)
+
+    def _adicionar_titulo_biblioteca(self, titulo: str) -> None:
+        ctk.CTkLabel(
+            self.lista_metodos_editor,
+            text=titulo,
+            font=("Arial", 10, "bold"),
+            text_color="gray65",
+            anchor="w",
+        ).pack(fill="x", padx=5, pady=(8, 2))
+
+    def _adicionar_item_biblioteca(
+        self,
+        nome: str,
+        codigo: str,
+        *,
+        removivel: bool = False,
+    ) -> None:
+        linha = ctk.CTkFrame(self.lista_metodos_editor, fg_color="transparent")
+        linha.pack(fill="x", pady=2)
+        ctk.CTkButton(
+            linha,
+            text=f"＋ {nome}",
+            anchor="w",
+            height=32,
+            command=lambda: self.inserir_metodo_no_editor(nome, codigo),
+        ).pack(side="left", fill="x", expand=True)
+        if removivel:
+            botao_remover = ctk.CTkButton(
+                linha,
+                text="×",
+                width=30,
+                height=32,
+                fg_color="#8B2E2E",
+                hover_color="#6E2424",
+                command=lambda: self.remover_metodo_salvo(nome),
+            )
+            botao_remover.pack(side="right", padx=(4, 0))
+            ToolTip(botao_remover, f"Remover {nome}")
+
+    def inserir_metodo_no_editor(self, nome: str, codigo: str) -> None:
+        conteudo_atual = self.caixa_texto_programacao.get("1.0", "end-1c")
+        if nome in parse_program(conteudo_atual).methods:
+            self.escrever_log(f"O método '{nome}' já está presente no Editor.", True)
+            return
+
+        separador = "\n\n" if conteudo_atual.strip() else ""
+        self.caixa_texto_programacao.insert(
+            "end-1c",
+            f"{separador}{codigo.rstrip()}\n",
+        )
+        self.escrever_log(
+            f"➕ Método '{nome}' adicionado ao Editor. Chame-o pelo nome no setup ou loop."
+        )
+
+    def salvar_metodos_do_editor(self) -> None:
+        conteudo = self.caixa_texto_programacao.get("1.0", "end-1c")
+        encontrados = extract_method_sources(conteudo)
+        if not encontrados:
+            self.escrever_log("Nenhuma declaração 'metodo Nome:' encontrada no Editor.", True)
+            return
+
+        atualizados = {**self.metodos_usuario, **encontrados}
+        try:
+            self.biblioteca_metodos.save(atualizados)
+        except OSError as error:
+            logger.exception("Falha ao salvar biblioteca de metodos")
+            self.escrever_log(f"Não foi possível salvar os métodos: {error}", True)
+            return
+
+        self.metodos_usuario = atualizados
+        self.atualizar_lista_metodos_editor()
+        self.escrever_log(f"💾 {len(encontrados)} método(s) salvo(s) na biblioteca do usuário.")
+
+    def remover_metodo_salvo(self, nome: str) -> None:
+        if nome not in self.metodos_usuario:
+            return
+        if not messagebox.askyesno(
+            "Remover método",
+            f"Remover '{nome}' da biblioteca?",
+            parent=self,
+        ):
+            return
+
+        restantes = {key: value for key, value in self.metodos_usuario.items() if key != nome}
+        try:
+            self.biblioteca_metodos.save(restantes)
+        except OSError as error:
+            logger.exception("Falha ao remover metodo da biblioteca")
+            self.escrever_log(f"Não foi possível remover o método: {error}", True)
+            return
+
+        self.metodos_usuario = restantes
+        self.atualizar_lista_metodos_editor()
+        self.escrever_log(f"Método '{nome}' removido da biblioteca.")
 
     def rodar_f(self):
         codigo = self.caixa_texto_programacao.get("1.0", "end-1c")
@@ -846,6 +1051,124 @@ class RobixSupervisorio(ctk.CTk):
     def rodar_execucao(self):
         codigo = self.caixa_visualizacao.get("1.0", "end-1c")
         self.processar_codigo(codigo)
+
+    def construir_tela_exemplos(self) -> None:
+        acoes = [
+            ("▶", "Executar Exemplo (F9)", self.executar_exemplo),
+            ("⏹", "PARAR EXEMPLO", self.solicitar_parada_imediata),
+        ]
+        self.criar_toolbar_global(self.tela_exemplos, "EXEMPLOS", acoes)
+
+        conteudo = ctk.CTkFrame(self.tela_exemplos, fg_color="transparent")
+        conteudo.pack(fill="both", expand=True, padx=20, pady=15)
+
+        lista = ctk.CTkScrollableFrame(conteudo, width=270, fg_color="gray15")
+        lista.pack(side="left", fill="y", padx=(0, 15))
+        ctk.CTkLabel(
+            lista,
+            text="ROTINAS DISPONÍVEIS",
+            font=("Arial", 13, "bold"),
+            text_color="#569CD6",
+        ).pack(fill="x", padx=10, pady=(10, 8))
+
+        self.botoes_exemplos = {}
+        for exemplo in ROUTINE_EXAMPLES:
+            botao = ctk.CTkButton(
+                lista,
+                text=exemplo.title,
+                anchor="w",
+                height=40,
+                fg_color="transparent",
+                hover_color="gray25",
+                command=lambda chave=exemplo.key: self.selecionar_exemplo(chave),
+            )
+            botao.pack(fill="x", padx=8, pady=3)
+            self.botoes_exemplos[exemplo.key] = botao
+
+        painel = ctk.CTkFrame(conteudo, fg_color="gray15")
+        painel.pack(side="right", fill="both", expand=True)
+
+        self.titulo_exemplo = ctk.CTkLabel(
+            painel,
+            text="",
+            font=("Arial", 22, "bold"),
+            anchor="w",
+        )
+        self.titulo_exemplo.pack(fill="x", padx=18, pady=(15, 2))
+        self.descricao_exemplo = ctk.CTkLabel(
+            painel,
+            text="",
+            font=("Arial", 13),
+            text_color="gray75",
+            anchor="w",
+            justify="left",
+            wraplength=650,
+        )
+        self.descricao_exemplo.pack(fill="x", padx=18, pady=(0, 8))
+        ctk.CTkLabel(
+            painel,
+            text=(
+                "⚠ Revise os ângulos no Editor antes do primeiro teste. A faixa 0-180 "
+                "não representa os limites mecânicos da sua montagem."
+            ),
+            font=("Arial", 12, "bold"),
+            text_color="#F0AD4E",
+            anchor="w",
+            justify="left",
+            wraplength=650,
+        ).pack(fill="x", padx=18, pady=(0, 10))
+
+        self.codigo_exemplo = ctk.CTkTextbox(
+            painel,
+            font=("Consolas", 13),
+            wrap="none",
+            fg_color="#101010",
+        )
+        self.codigo_exemplo.pack(fill="both", expand=True, padx=18, pady=(0, 12))
+
+        acoes_exemplo = ctk.CTkFrame(painel, fg_color="transparent")
+        acoes_exemplo.pack(fill="x", padx=18, pady=(0, 15))
+        ctk.CTkButton(
+            acoes_exemplo,
+            text="➕ Adicionar método ao Editor",
+            command=self.abrir_exemplo_no_editor,
+        ).pack(side="left")
+        ctk.CTkButton(
+            acoes_exemplo,
+            text="▶ Executar uma vez",
+            fg_color="#28A745",
+            hover_color="#218838",
+            command=self.executar_exemplo,
+        ).pack(side="right")
+
+        self.exemplo_atual = ROUTINE_EXAMPLES[0]
+        self.selecionar_exemplo(self.exemplo_atual.key)
+
+    def selecionar_exemplo(self, chave: str) -> None:
+        exemplo = get_routine_example(chave)
+        if exemplo is None:
+            self.escrever_log(f"Exemplo desconhecido: {chave}.", True)
+            return
+
+        self.exemplo_atual = exemplo
+        self.titulo_exemplo.configure(text=exemplo.title)
+        self.descricao_exemplo.configure(text=exemplo.description)
+        self.codigo_exemplo.configure(state="normal")
+        self.codigo_exemplo.delete("1.0", "end")
+        self.codigo_exemplo.insert("1.0", exemplo.code)
+        self.codigo_exemplo.configure(state="disabled")
+        for key, botao in self.botoes_exemplos.items():
+            botao.configure(fg_color="#1F538D" if key == chave else "transparent")
+
+    def abrir_exemplo_no_editor(self) -> None:
+        exemplo: RoutineExample = self.exemplo_atual
+        self.mostrar_tela(self.tela_texto)
+        self.inserir_metodo_no_editor(exemplo.method_name, exemplo.method_code)
+
+    def executar_exemplo(self) -> None:
+        exemplo: RoutineExample = self.exemplo_atual
+        self.escrever_log(f"🧪 Executando exemplo: {exemplo.title}.")
+        self.processar_codigo(exemplo.code)
 
     def fechar_aplicacao(self) -> None:
         if self.rotina_em_execucao:

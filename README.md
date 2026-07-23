@@ -7,9 +7,12 @@ Projeto da disciplina de Robótica Industrial, orientada pelo Prof. Dr. Ronan Ma
 - Controle de seis servomotores pelo Teach Pendant;
 - Modo em tempo real e preparação de poses offline;
 - Gravação, edição e execução de rotinas na Linguagem Robix;
+- Galeria com 12 métodos de exemplo para movimentos básicos, trajetórias e manipulação;
+- Biblioteca pessoal de métodos persistente entre sessões;
 - Comandos `MoveTo`, `MovePose` e `Wait`;
 - Parada controlada pelo botão STOP ou, durante uma rotina, pela barra de espaço;
 - Comunicação serial e interpolação não bloqueante no Arduino;
+- Suavização global com aceleração e desaceleração automáticas no firmware;
 - Manual integrado acessível por F1.
 
 `MovePose` é uma operação lógica expandida em até seis quadros de movimento. São transmitidos os motores cujo estado comandado esteja desconhecido ou seja diferente do alvo. O estado torna-se desconhecido na inicialização, em toda tentativa de conexão e após um STOP.
@@ -20,6 +23,8 @@ Projeto da disciplina de Robótica Industrial, orientada pelo Prof. Dr. Ronan Ma
 - `suri_edu/app.py`: telas, navegação e execução cancelável das rotinas;
 - `suri_edu/motor_controller.py`: validação, transmissão e estado dos motores;
 - `suri_edu/robix_language.py`: parser e geração de rotinas Robix;
+- `suri_edu/routine_examples.py`: catálogo de métodos e rotinas de exemplo;
+- `suri_edu/method_library.py`: persistência da biblioteca pessoal de métodos;
 - `suri_edu/serial_manager.py`: conexão e enquadramento serial;
 - `suri_edu/gui_components.py`: editor e componentes reutilizáveis;
 - `suri_edu/help_content.py`: conteúdo da ajuda integrada;
@@ -93,6 +98,10 @@ A aplicação e o firmware usam comunicação serial a 115200 baud.
 
 > **Atenção:** ao iniciar, o firmware anexa os seis servos e solicita 90 graus. Abrir a porta serial normalmente reinicia o Arduino e pode repetir esse movimento. Confira a montagem antes de conectar.
 
+Após gravar o firmware atual, todo alvo recebido pelo Arduino usa automaticamente um perfil de velocidade triangular ou trapezoidal, com aceleração e frenagem progressivas. Isso vale para `MoveTo`, `MovePose`, Teach Pendant, métodos pessoais e exemplos; não é necessário escrever ângulos intermediários no código Robix.
+
+A suavização começa depois da inicialização. O movimento para 90 graus ao anexar os servos não pode partir de uma posição física conhecida porque esta versão não possui sensores. O STOP também interrompe o perfil imediatamente em vez de desacelerar, priorizando a parada solicitada.
+
 Sem Arduino, a interface, o editor e a gravação de poses podem ser usados em modo offline. Tentativas de transmissão falham e não são registradas como estado comandado.
 
 ## Linguagem Robix
@@ -122,13 +131,58 @@ Por compatibilidade com rotinas antigas, o reconhecimento de comandos é permiss
 
 Arquivos de rotina usam texto UTF-8 com extensão `.txt`. Consulte a gramática e o comportamento de erros no [Manual do Operador](Instrucoes/HELP.md).
 
+## Exemplos Integrados
+
+Abra a galeria pelo ícone `🧪` ou por `F6`. A prévia é somente leitura. Cada exemplo declara um método e o chama uma vez em `setup`; nenhum possui `loop`.
+
+| Método | Finalidade |
+|---|---|
+| `PosicaoNeutra` | Centralizar os seis motores em 90 graus |
+| `AbrirGarra` | Abrir a garra na referência didática |
+| `FecharGarra` | Fechar a garra na referência didática |
+| `CicloDaGarra` | Demonstrar dois ciclos de abertura e fechamento |
+| `TestarJuntas` | Testar os seis motores individualmente |
+| `VarreduraDaBase` | Percorrer esquerda, centro e direita com a base |
+| `DemonstrarEspacoTrabalho` | Explorar uma sequência moderada de poses |
+| `PercorrerTresPontos` | Demonstrar uma trajetória coordenada A-B-C |
+| `AcenarRobix` | Produzir um gesto curto com punho e braço |
+| `InspecionarObjeto` | Simular a rotação de um objeto na garra |
+| `CoreografiaRobix` | Coordenar várias juntas em quatro poses |
+| `PickAndPlace` | Demonstrar uma sequência de coleta e entrega |
+
+"Executar uma vez" ou `F9` na galeria inicia imediatamente o código original do exemplo. Para adaptar os ângulos, use "Adicionar método ao Editor", edite a declaração e chame seu nome em `setup`, `loop` ou outro método. Inserir apenas acrescenta a declaração ao fim do código, não cria a chamada e não executa movimento. Uma declaração com o mesmo nome não é inserida novamente.
+
+Os métodos mostram apenas poses e destinos relevantes. A aceleração, os passos físicos e a frenagem são calculados pelo firmware, portanto não aparecem como sequências artificiais de pequenos ângulos no Editor.
+
+> **Segurança dos exemplos:** os valores são referências didáticas. Antes da execução direta, mantenha a área livre e confira orientação dos servos, limites mecânicos, ferramenta e obstáculos. A faixa de 0 a 180 graus do protocolo não é um envelope seguro da montagem.
+
+### Biblioteca pessoal
+
+A aba "Métodos" do Editor reúne exemplos incorporados e métodos pessoais. "Salvar métodos do código" extrai todas as declarações `metodo Nome:` presentes no Editor e as mescla em `~/.suri_edu/metodos.json`.
+
+- Um nome já salvo é atualizado; outros métodos da biblioteca são preservados.
+- Métodos pessoais precisam ser inseridos no código antes da execução.
+- Dependências chamadas por um método devem ser inseridas separadamente.
+- O botão `×` remove o item da biblioteca após confirmação, mas não altera o Editor aberto.
+- Os exemplos incorporados são fixos, não dependem do JSON e não podem ser removidos.
+
+## Arquivos E Persistência
+
+O Editor abre e salva `.txt` em UTF-8. Cada salvamento abre uma janela "Salvar como"; não há arquivo atual associado, salvamento automático, indicador de alterações ou confirmação ao abrir, exportar ou fechar com conteúdo não salvo.
+
+Os pontos capturados no Teach Pendant permanecem somente na memória até "Exportar". A exportação substitui o conteúdo do Editor, acrescenta `Wait(1000)` após cada ponto e gera um `loop` que repete continuamente o método até STOP, troca de tela ou encerramento.
+
 ## Operação Segura
 
 Durante uma rotina, espaço e STOP cancelam os callbacks e comandos locais ainda não executados. O botão STOP também pode ser usado fora de uma rotina para interromper uma interpolação manual. A aplicação invalida o estado comandado, tenta escrever `<STOP,id>` e, se a escrita for completa, aguarda por até 1 segundo o `<ACK,STOP,id>` correspondente.
 
 O firmware congela os alvos na última etapa interpolada, mantém os servos anexados e continua solicitando o último PWM. Isso não mede nem garante posição, torque físico ou capacidade de sustentação. O transporte serial é FIFO: bytes anteriores permanecem à frente do STOP, portanto não há garantia de latência máxima.
 
+A suavização reduz mudanças bruscas de velocidade, mas não detecta colisões, carga excessiva, folga, travamento ou limites mecânicos. Ela não transforma uma pose válida no protocolo em uma pose fisicamente segura.
+
 Trocar de tela durante uma rotina solicita STOP. Iniciar outra rotina ou fechar a aplicação durante uma execução envia STOP de forma best-effort, mas esses fluxos não aguardam a confirmação antes de continuar ou encerrar.
+
+No Editor, Painel e Exemplos, `F9` inicia imediatamente o código da tela atual. Nas demais telas apenas registra um aviso. Abrir ou inserir código não movimenta o robô por si só.
 
 > **Limitação de segurança:** a parada depende do computador, aplicação, cabo, porta serial, firmware e alimentação. Ela não substitui uma parada de emergência física, cabeada e independente do software.
 
